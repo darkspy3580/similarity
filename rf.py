@@ -98,7 +98,12 @@ def main():
     st.sidebar.markdown("### Or enter sequences directly:")
     protein_a_input = st.sidebar.text_area("Enter Protein A sequence (FASTA format)")
     protein_b_input = st.sidebar.text_area("Enter Protein B sequence (FASTA format)")
-    
+
+     # Analysis method selection
+    analysis_method = st.sidebar.radio(
+        "Choose Analysis Method",
+        ["Sequence-based Similarity", " Random Forest Model for class"]
+    )
    
     
     # Submit button

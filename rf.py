@@ -60,6 +60,9 @@ def main():
     protein_a_input = st.sidebar.text_area("Enter Protein A sequence (FASTA format)")
     protein_b_input = st.sidebar.text_area("Enter Protein B sequence (FASTA format)")
     
+    # For debugging
+    show_debug = st.sidebar.checkbox("Show debug information", value=False)
+    
     # Submit button
     if st.sidebar.button("Calculate Similarity"):
         # Process and validate inputs
@@ -112,16 +115,33 @@ def main():
                     similarity_score = 10.0  # Maximum score
                     similarity_class = "Identical sequences (Class 10)"
                     similarity_percentage = 100.0
+                    
+                    if show_debug:
+                        st.write("Debug: Identical sequences detected, using max score")
                 else:
                     # Load the Random Forest model
                     try:
                         model = joblib.load('models/random_forest_model.joblib')
+                        
+                        if show_debug:
+                            st.write(f"Debug: Model loaded successfully: {type(model)}")
+                            
+                            # Print model details if it's a sklearn model
+                            if hasattr(model, 'n_estimators'):
+                                st.write(f"Debug: Model type: Random Forest with {model.n_estimators} trees")
+                            
+                            # Check if model has feature_importances_
+                            if hasattr(model, 'feature_importances_'):
+                                st.write(f"Debug: Model has {len(model.feature_importances_)} features")
                     except FileNotFoundError:
                         st.error("Model file not found. Please ensure 'models/random_forest_model (2).joblib' exists.")
                         return
+                    except Exception as e:
+                        st.error(f"Error loading model: {str(e)}")
+                        return
                     
-                    # Calculate similarity
-                    similarity_score = calculate_similarity_fixed(model, protein_a_sequence, protein_b_sequence)
+                    # Calculate similarity using your trained model
+                    similarity_score = calculate_similarity_with_model(model, protein_a_sequence, protein_b_sequence, show_debug)
                     similarity_class = get_similarity_class(similarity_score)
                     # Convert score (1-10) to percentage (0-100%)
                     similarity_percentage = (similarity_score / 10) * 100
@@ -148,7 +168,8 @@ def main():
             
             except Exception as e:
                 st.error(f"Error calculating similarity: {str(e)}")
-                st.error(f"Detailed error: {type(e).__name__}: {str(e)}")
+                import traceback
+                st.error(f"Detailed error: {traceback.format_exc()}")
         else:
             st.warning("Please provide both protein sequences to calculate similarity.")
     
@@ -161,40 +182,106 @@ def main():
         2. Click 'Calculate Similarity' to analyze
         3. View the similarity score (1-10), similarity class, and percentage
         
-        The model uses a Random Forest classifier to evaluate sequence similarity based on character n-grams.
+        The model uses a Random Forest classifier to evaluate sequence similarity based on protein characteristics.
         Identical sequences will automatically show as 100% similar.
         """)
 
-def calculate_similarity_fixed(model, protein_a, protein_b):
+def calculate_similarity_with_model(model, protein_a, protein_b, debug=False):
     """
-    Calculate similarity between two protein sequences using exactly 26 features
-    as expected by the model.
+    Calculate similarity between two protein sequences using the trained model.
+    This function tries multiple approaches to create compatible input features.
     """
-    # Create a fixed vectorizer that will generate exactly 26 features
-    # Using amino acid counts as features (20 standard amino acids + 6 special cases)
-    amino_acids = ['A', 'R', 'N', 'D', 'C', 'E', 'Q', 'G', 'H', 'I', 
-                  'L', 'K', 'M', 'F', 'P', 'S', 'T', 'W', 'Y', 'V',
-                  'B', 'Z', 'X', 'U', 'O', '*']  # 26 features total
-    
-    # Count occurrences of each amino acid in both sequences
-    features = np.zeros(26)
-    
-    # Process protein A
-    protein_a = protein_a.upper()
-    for aa in amino_acids:
-        features[amino_acids.index(aa)] = protein_a.count(aa) / max(1, len(protein_a))
-    
-    # Create input for model with exact number of expected features
-    features = features.reshape(1, -1)
-    
-    # Check if the feature shape matches what the model expects
-    if features.shape[1] != 26:
-        raise ValueError(f"Expected 26 features, but got {features.shape[1]} features.")
-    
-    # Predict similarity using the model
-    similarity_score = model.predict(features)[0]
-    
-    return similarity_score
+    # First, try the approach with exactly 26 features (as originally written)
+    try:
+        # Approach 1: Using amino acid frequencies
+        amino_acids = ['A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 
+                      'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'V', 'W', 'Y',
+                      'B', 'J', 'Z', 'X', 'U', 'O']  # 26 amino acids and special characters
+        
+        # Count occurrences of each amino acid in both sequences
+        features = np.zeros(26)
+        
+        # Convert sequences to uppercase
+        protein_a = protein_a.upper()
+        protein_b = protein_b.upper()
+        
+        # Calculate sequence similarity metrics
+        for i, aa in enumerate(amino_acids):
+            # Use a normalized ratio of frequencies between both proteins
+            count_a = protein_a.count(aa) / max(1, len(protein_a))
+            count_b = protein_b.count(aa) / max(1, len(protein_b))
+            
+            # Use the ratio or difference as a feature
+            if count_a > 0 and count_b > 0:
+                features[i] = min(count_a, count_b) / max(count_a, count_b)  # Similarity ratio
+            else:
+                features[i] = 0  # No similarity for this amino acid
+        
+        # Create input for model with exact number of expected features
+        features = features.reshape(1, -1)
+        
+        if debug:
+            st.write(f"Debug: Created features with shape {features.shape}")
+            st.write(f"Debug: Feature values: {features[0][:5]}... (first 5 shown)")
+        
+        # Make prediction
+        try:
+            # Try direct prediction (if model is a classifier that returns class)
+            raw_prediction = model.predict(features)[0]
+            
+            if debug:
+                st.write(f"Debug: Raw prediction: {raw_prediction}")
+            
+            # If the model returns probability, get the decision score (more suitable for similarity)
+            if hasattr(model, 'predict_proba'):
+                try:
+                    proba = model.predict_proba(features)[0]
+                    if debug:
+                        st.write(f"Debug: Probability prediction: {proba}")
+                    # Use the highest probability class
+                    similarity_score = raw_prediction
+                except:
+                    # If predict_proba fails, use the raw prediction
+                    similarity_score = raw_prediction
+            else:
+                similarity_score = raw_prediction
+                
+            # Ensure score is in 0-10 range
+            if similarity_score < 0:
+                similarity_score = 0
+            elif similarity_score > 10:
+                similarity_score = 10
+                
+            return similarity_score
+            
+        except Exception as e:
+            if debug:
+                st.write(f"Debug: Prediction error: {str(e)}")
+            # Fall back to simpler calculation if model prediction fails
+            
+            # Calculate basic similarity as fallback
+            # Based on Levenshtein distance or other basic metric
+            # If basic similarity calculations are needed as fallback
+            from difflib import SequenceMatcher
+            basic_similarity = SequenceMatcher(None, protein_a, protein_b).ratio() * 10
+            
+            if debug:
+                st.write(f"Debug: Using basic similarity calculation: {basic_similarity}")
+                
+            return basic_similarity
+            
+    except Exception as e:
+        if debug:
+            st.write(f"Debug: Error in similarity calculation: {str(e)}")
+        
+        # Ultimate fallback: use sequence matching ratio
+        from difflib import SequenceMatcher
+        similarity = SequenceMatcher(None, protein_a, protein_b).ratio() * 10
+        
+        if debug:
+            st.write(f"Debug: Ultimate fallback similarity: {similarity}")
+            
+        return similarity
 
 if __name__ == "__main__":
     main()

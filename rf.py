@@ -85,6 +85,95 @@ def calculate_sequence_similarity(seq1, seq2):
     
     return min(10.0, max(0.0, final_score))  # Clamp between 0 and 10
 
+def extract_features_from_sequences(seq1, seq2):
+    """Extract features from protein sequences for the random forest model.
+    Returns a feature vector that the model can use for prediction."""
+    
+    # Feature 1: Sequence similarity using SequenceMatcher
+    ratio_score = SequenceMatcher(None, seq1, seq2).ratio()
+    
+    # Feature 2: Length ratio
+    len_ratio = min(len(seq1), len(seq2)) / max(len(seq1), len(seq2))
+    
+    # Feature 3: Amino acid composition similarity
+    amino_acids = 'ACDEFGHIKLMNPQRSTVWY'
+    counts_1 = {aa: seq1.upper().count(aa) / max(1, len(seq1)) for aa in amino_acids}
+    counts_2 = {aa: seq2.upper().count(aa) / max(1, len(seq2)) for aa in amino_acids}
+    
+    composition_diffs = []
+    for aa in amino_acids:
+        composition_diffs.append(abs(counts_1[aa] - counts_2[aa]))
+    
+    composition_similarity = 1 - (sum(composition_diffs) / len(amino_acids))
+    
+    # Feature 4: K-mer similarity
+    k = 3  # length of k-mers
+    kmers_1 = set(seq1[i:i+k] for i in range(len(seq1)-k+1) if i+k <= len(seq1))
+    kmers_2 = set(seq2[i:i+k] for i in range(len(seq2)-k+1) if i+k <= len(seq2))
+    
+    if not kmers_1 or not kmers_2:
+        kmer_similarity = 0
+    else:
+        shared = len(kmers_1.intersection(kmers_2))
+        total = len(kmers_1.union(kmers_2))
+        kmer_similarity = shared / total
+    
+    # Feature 5: Calculate molecular weight difference (approximation)
+    # Molecular weights in Daltons (approximate)
+    mw = {'A': 89.1, 'C': 121.2, 'D': 133.1, 'E': 147.1, 'F': 165.2, 
+          'G': 75.1, 'H': 155.2, 'I': 131.2, 'K': 146.2, 'L': 131.2, 
+          'M': 149.2, 'N': 132.1, 'P': 115.1, 'Q': 146.2, 'R': 174.2, 
+          'S': 105.1, 'T': 119.1, 'V': 117.1, 'W': 204.2, 'Y': 181.2}
+    
+    mw1 = sum(mw.get(aa.upper(), 0) for aa in seq1)
+    mw2 = sum(mw.get(aa.upper(), 0) for aa in seq2)
+    mw_ratio = min(mw1, mw2) / max(mw1, mw2)
+    
+    # Feature 6: Longest common subsequence ratio
+    def lcs_length(s1, s2):
+        m, n = len(s1), len(s2)
+        # Use shorter strings if sequences are too long
+        if m > 1000 or n > 1000:
+            s1 = s1[:1000]
+            s2 = s2[:1000]
+            m, n = len(s1), len(s2)
+            
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        
+        # Fill dp table
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if s1[i-1] == s2[j-1]:
+                    dp[i][j] = dp[i-1][j-1] + 1
+                else:
+                    dp[i][j] = max(dp[i-1][j], dp[i][j-1])
+        
+        return dp[m][n]
+    
+    # Only compute LCS for reasonably sized sequences to avoid performance issues
+    if len(seq1) < 2000 and len(seq2) < 2000:
+        lcs_len = lcs_length(seq1, seq2)
+        lcs_ratio = lcs_len / max(len(seq1), len(seq2))
+    else:
+        # For very long sequences, estimate using the first 2000 characters
+        lcs_len = lcs_length(seq1[:2000], seq2[:2000])
+        lcs_ratio = lcs_len / 2000
+    
+    # Combine all features into a single vector
+    features = [
+        ratio_score,                # Sequence matcher similarity
+        len_ratio,                  # Length ratio
+        composition_similarity,     # AA composition similarity
+        kmer_similarity,            # K-mer similarity
+        mw_ratio,                   # Molecular weight ratio
+        lcs_ratio                   # Longest common subsequence ratio
+    ]
+    
+    # Add individual amino acid frequency differences
+    features.extend(composition_diffs)
+    
+    return features
+
 def main():
     st.title("Protein Similarity Using ML")
     st.write("Upload or enter two protein sequences to calculate their similarity score and class.")
@@ -102,7 +191,7 @@ def main():
     # Analysis method selection
     analysis_method = st.sidebar.radio(
         "Choose Analysis Method",
-        ["Sequence-based Similarity", "Try Random Forest Model"]
+        ["Sequence-based Similarity", "Random Forest Model"]
     )
     
     # Submit button
@@ -167,23 +256,30 @@ def main():
                     if analysis_method == "Sequence-based Similarity":
                         # Use the sequence-based similarity calculation
                         similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
+                        st.info("Using sequence-based similarity calculation.")
                     else:
                         # Try to use the random forest model
                         try:
+                            # Load the model
                             model = joblib.load('models/random_forest_model.joblib')
-                            # Use the model
-                            # This is a placeholder - as you reported, the model always returns 0
-                            # Use sequence similarity as fallback if model returns 0
-                            model_score = 0  # Assuming model always returns 0 based on previous attempts
+                            
+                            # Extract features from sequences for the model
+                            features = extract_features_from_sequences(protein_a_sequence, protein_b_sequence)
+                            
+                            # Use the model to predict similarity
+                            model_score = model.predict([features])[0]
+                            
+                            st.info(f"Random Forest Model raw prediction: {model_score:.4f}")
                             
                             if model_score <= 0:
-                                st.warning("Model prediction was 0. Using sequence-based similarity as fallback.")
+                                st.warning("Model prediction was 0 or negative. Using sequence-based similarity as fallback.")
                                 similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
                             else:
-                                similarity_score = model_score
+                                similarity_score = min(10.0, max(0.0, model_score))  # Ensure score is in range [0, 10]
+                                st.success("Successfully used Random Forest model for prediction.")
                                 
                         except Exception as e:
-                            st.warning(f"Model could not be loaded or error in prediction. Using sequence-based similarity instead.")
+                            st.warning(f"Model could not be loaded or error in prediction: {str(e)}. Using sequence-based similarity instead.")
                             similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
                     
                     similarity_class = get_similarity_class(similarity_score)
@@ -209,79 +305,6 @@ def main():
                     st.write("**Protein B:**")
                     st.text_area("Sequence B", protein_b_sequence[:100] + "..." if len(protein_b_sequence) > 100 else protein_b_sequence, height=100, disabled=True)
                     st.write(f"Length: {len(protein_b_sequence)} amino acids")
-                
-                # Show additional analytics
-                st.subheader("Sequence Analysis")
-                
-                # Calculate basic statistics
-                common_aas = set(protein_a_sequence.upper()) & set(protein_b_sequence.upper())
-                
-                # Display stats
-                st.write(f"Common amino acids: {', '.join(sorted(common_aas))}")
-                
-                # Find longest common subsequence
-                def longest_common_subsequence(s1, s2):
-                    m, n = len(s1), len(s2)
-                    dp = [[0] * (n + 1) for _ in range(m + 1)]
-                    
-                    # Fill dp table
-                    for i in range(1, m + 1):
-                        for j in range(1, n + 1):
-                            if s1[i-1] == s2[j-1]:
-                                dp[i][j] = dp[i-1][j-1] + 1
-                            else:
-                                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-                    
-                    # Reconstruct LCS
-                    i, j = m, n
-                    lcs = []
-                    
-                    while i > 0 and j > 0:
-                        if s1[i-1] == s2[j-1]:
-                            lcs.append(s1[i-1])
-                            i -= 1
-                            j -= 1
-                        elif dp[i-1][j] > dp[i][j-1]:
-                            i -= 1
-                        else:
-                            j -= 1
-                    
-                    return ''.join(reversed(lcs))
-                
-                # Only compute LCS for reasonably sized sequences
-                if len(protein_a_sequence) < 1000 and len(protein_b_sequence) < 1000:
-                    lcs = longest_common_subsequence(protein_a_sequence, protein_b_sequence)
-                    if len(lcs) > 10:
-                        st.write(f"Longest common subsequence (first 20 characters): {lcs[:20]}...")
-                        st.write(f"LCS length: {len(lcs)} amino acids")
-                    else:
-                        st.write(f"Longest common subsequence: {lcs}")
-                
-            except Exception as e:
-                st.error(f"Error calculating similarity: {str(e)}")
-                import traceback
-                st.error(f"Detailed error: {traceback.format_exc()}")
-        else:
-            st.warning("Please provide both protein sequences to calculate similarity.")
-    
-    # Add some informational content to the main page when no calculation is performed
-    if "similarity_score" not in locals():
-        st.info("⬅️ Please upload or enter protein sequences in the sidebar and click 'Calculate Similarity'")
-        st.markdown("""
-        ### How it works:
-        1. Upload FASTA files or enter protein sequences in FASTA format
-        2. Click 'Calculate Similarity' to analyze
-        3. View the similarity score (1-10), similarity class, and percentage
-        
-        **Sequence-based Similarity Method**:
-        - Uses a combination of sequence alignment, amino acid composition, and k-mer similarity
-        - Works without requiring a pre-trained model
-        - Provides reliable similarity scores for any protein sequences
-        
-        **Random Forest Model Method**:
-        - Attempts to use your trained random forest model
-        - Falls back to sequence-based similarity if model returns 0 or fails
-        """)
 
 if __name__ == "__main__":
     main()

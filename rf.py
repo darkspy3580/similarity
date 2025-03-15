@@ -134,7 +134,7 @@ def main():
                             if hasattr(model, 'feature_importances_'):
                                 st.write(f"Debug: Model has {len(model.feature_importances_)} features")
                     except FileNotFoundError:
-                        st.error("Model file not found. Please ensure 'models/random_forest_model (2).joblib' exists.")
+                        st.error("Model file not found. Please ensure 'models/random_forest_model.joblib' exists.")
                         return
                     except Exception as e:
                         st.error(f"Error loading model: {str(e)}")

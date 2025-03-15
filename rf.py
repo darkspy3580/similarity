@@ -306,5 +306,4 @@ def main():
                     st.text_area("Sequence B", protein_b_sequence[:100] + "..." if len(protein_b_sequence) > 100 else protein_b_sequence, height=100, disabled=True)
                     st.write(f"Length: {len(protein_b_sequence)} amino acids")
 
-if __name__ == "__main__":
-    main()
+

@@ -120,7 +120,7 @@ def main():
             try:
                 # Load the Random Forest model
                 try:
-                    model = joblib.load('models/random_forest_model.joblib')
+                    model = joblib.load('models/random_forest_model (2).joblib')
                 except FileNotFoundError:
                     st.error("Model file not found. Please ensure 'models/random_forest_model.joblib' exists.")
                     return

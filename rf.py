@@ -192,7 +192,6 @@ def main():
                     similarity_percentage = (similarity_score / 10) * 100
                 
                 # Display results
-                st.success(f"Similarity Score: {similarity_score:.2f}/10")
                 st.info(f"Similarity Class: {similarity_class}")
                 st.info(f"Similarity Percentage: {similarity_percentage:.1f}%")
                 

@@ -61,7 +61,7 @@ def main():
 # Actual similarity calculation function using Random Forest model
 def calculate_similarity_random_forest(protein_a_sequence, protein_b_sequence):
     # Load the Random Forest model
-    model = joblib.load('random_forest_model.joblib')
+    model = joblib.load('models/random_forest_model.joblib')
 
     # Prepare data for model input
     sequences = [protein_a_sequence, protein_b_sequence]

@@ -6,3 +6,4 @@ numpy
 biopython
 matplotlib
 seaborn
+tensorflow

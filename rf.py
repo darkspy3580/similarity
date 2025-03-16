@@ -272,13 +272,9 @@ def main():
         ### How it works:
         1. Upload FASTA files or enter protein sequences in FASTA format
         2. Click 'Calculate Similarity' to analyze
-        3. View the similarity score (1-10), similarity class, and percentage
+        3. View the similarity score , similarity class(1-10) based on the trained ML model, and percentage
         
-        
-        **Random Forest Model Method**:
-        - Attempts to use your trained random forest model
-        - Falls back to sequence-based similarity if model returns 0 or fails
-        """)
+        )
 
 if __name__ == "__main__":
     main()

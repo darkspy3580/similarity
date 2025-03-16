@@ -274,7 +274,7 @@ def main():
         2. Click 'Calculate Similarity' to analyze
         3. View the similarity score , similarity class(1-10) based on the trained ML model, and percentage
         
-        )
+        """)
 
 if __name__ == "__main__":
     main()

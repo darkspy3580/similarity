@@ -3,3 +3,6 @@ streamlit
 scikit-learn
 joblib
 numpy
+biopython
+matplotlib
+seaborn

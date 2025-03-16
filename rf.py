@@ -5,15 +5,21 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-# Define the absolute path to your model
-MODEL_PATH = "/models/cnn_model.h5"  # Update this path
+# Set the correct model path
+MODEL_PATH = "models/cnn_model.h5"
+
+# Function to check if the model exists
+def check_model():
+    if not os.path.exists(MODEL_PATH):
+        st.error(f"Model file not found: {MODEL_PATH}")
+        return False
+    return True
 
 # Function to read FASTA format
 def read_fasta(file):
     fasta_dict = {}
     current_key = None
     current_sequence = []
-
     for line in file:
         line = line.strip()
         if line.startswith(">"):
@@ -23,17 +29,14 @@ def read_fasta(file):
             current_sequence = []
         else:
             current_sequence.append(line)
-
     if current_key:
         fasta_dict[current_key] = "".join(current_sequence)
-
     return fasta_dict
 
 # Function to calculate similarity using CNN model
 def calculate_similarity_cnn(protein_a_sequence, protein_b_sequence):
-    # Check if the model file exists
-    if not os.path.exists(MODEL_PATH):
-        st.error(f"Model file not found at {MODEL_PATH}. Please check the path.")
+    # Check if model exists
+    if not check_model():
         return None
 
     # Load the CNN model

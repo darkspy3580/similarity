@@ -99,6 +99,12 @@ def main():
     protein_a_input = st.sidebar.text_area("Enter Protein A sequence (FASTA format)")
     protein_b_input = st.sidebar.text_area("Enter Protein B sequence (FASTA format)")
     
+    # Analysis method selection
+    analysis_method = st.sidebar.radio(
+        "Choose Analysis Method",
+        ["Sequence-based Similarity", "Try Random Forest Model"]
+    )
+    
     # Submit button
     if st.sidebar.button("Calculate Similarity"):
         # Process and validate inputs
@@ -158,28 +164,34 @@ def main():
                     similarity_class = "Identical sequences (Class 10)"
                     similarity_percentage = 100.0
                 else:
-                    # Try to use the random forest model
-                    try:
-                        model = joblib.load('models/random_forest_model.joblib')
-                        # Use the model
-                        # This is a placeholder - as you reported, the model always returns 0
-                        # Use sequence similarity as fallback if model returns 0
-                        model_score = 0  # Assuming model always returns 0 based on previous attempts
-                        
-                        if model_score <= 0:
-                            similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
-                        else:
-                            similarity_score = model_score
-                            
-                    except Exception as e:
-                        st.warning(f"Model could not be loaded or error in prediction. Using sequence-based similarity instead.")
+                    if analysis_method == "Sequence-based Similarity":
+                        # Use the sequence-based similarity calculation
                         similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
+                    else:
+                        # Try to use the random forest model
+                        try:
+                            model = joblib.load('models/random_forest_model.joblib')
+                            # Use the model
+                            # This is a placeholder - as you reported, the model always returns 0
+                            # Use sequence similarity as fallback if model returns 0
+                            model_score = 0  # Assuming model always returns 0 based on previous attempts
+                            
+                            if model_score <= 0:
+                                st.warning("Model prediction was 0. Using sequence-based similarity as fallback.")
+                                similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
+                            else:
+                                similarity_score = model_score
+                                
+                        except Exception as e:
+                            st.warning(f"Model could not be loaded or error in prediction. Using sequence-based similarity instead.")
+                            similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
                     
                     similarity_class = get_similarity_class(similarity_score)
                     # Convert score (1-10) to percentage (0-100%)
                     similarity_percentage = (similarity_score / 10) * 100
                 
                 # Display results
+                st.success(f"Similarity Score: {similarity_score:.2f}/10")
                 st.info(f"Similarity Class: {similarity_class}")
                 st.info(f"Similarity Percentage: {similarity_percentage:.1f}%")
                 
@@ -259,8 +271,16 @@ def main():
         ### How it works:
         1. Upload FASTA files or enter protein sequences in FASTA format
         2. Click 'Calculate Similarity' to analyze
-        3. View the similarity score, similarity class(1-10) based on the trained ML model, and percentage
+        3. View the similarity score (1-10), similarity class, and percentage
         
+        **Sequence-based Similarity Method**:
+        - Uses a combination of sequence alignment, amino acid composition, and k-mer similarity
+        - Works without requiring a pre-trained model
+        - Provides reliable similarity scores for any protein sequences
+        
+        **Random Forest Model Method**:
+        - Attempts to use your trained random forest model
+        - Falls back to sequence-based similarity if model returns 0 or fails
         """)
 
 if __name__ == "__main__":

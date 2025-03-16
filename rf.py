@@ -1,5 +1,4 @@
 import streamlit as st
-import numpy as np
 import joblib  # Import joblib to load the random forest model
 from sklearn.feature_extraction.text import CountVectorizer
 
@@ -49,11 +48,11 @@ def read_fasta(file):
 
     return fasta_dict
 
-# Actual similarity calculation function using Random Forest model
-def calculate_similarity_random_forest(protein_a_sequence, protein_b_sequence):
+# Function to calculate similarity using Random Forest model
+def calculate_similarity_class(protein_a_sequence, protein_b_sequence):
     # If both sequences are identical, return 100% similarity
     if protein_a_sequence == protein_b_sequence:
-        return 100, 9  # 100% similarity and highest class
+        return "100% Similar"
 
     # Load the Random Forest model
     model = joblib.load('models/random_forest_model.joblib')
@@ -78,7 +77,7 @@ def calculate_similarity_random_forest(protein_a_sequence, protein_b_sequence):
     # Map to similarity class
     similarity_class = map_values(scaled_similarity_score)
 
-    return scaled_similarity_score, similarity_class
+    return f"Class: {similarity_class}"
 
 # Define the main function
 def main():
@@ -116,12 +115,11 @@ def main():
             st.error("Please provide valid protein sequences for both inputs.")
             return
 
-        # Perform similarity calculation using the Random Forest model
-        similarity_score, similarity_class = calculate_similarity_random_forest(protein_a_sequence, protein_b_sequence)
+        # Perform similarity calculation
+        similarity_result = calculate_similarity_class(protein_a_sequence, protein_b_sequence)
 
         # Display results
-        
-        st.info(f"Similarity Class: {similarity_class}")
+        st.success(f"Similarity Result: {similarity_result}")
 
 if __name__ == "__main__":
     main()

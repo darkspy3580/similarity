@@ -120,7 +120,7 @@ def main():
         similarity_score, similarity_class = calculate_similarity_random_forest(protein_a_sequence, protein_b_sequence)
 
         # Display results
-        st.success(f"Similarity Score: {similarity_score:.2f}%")
+        
         st.info(f"Similarity Class: {similarity_class}")
 
 if __name__ == "__main__":

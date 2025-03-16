@@ -1,7 +1,8 @@
 import streamlit as st
 import numpy as np
-import joblib  # Import joblib to load the random forest model
-from sklearn.feature_extraction.text import CountVectorizer
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 # Function to read FASTA format
 def read_fasta(file):
@@ -26,7 +27,7 @@ def read_fasta(file):
 
 # Define the main function
 def main():
-    st.title("Protein Similarity Using Random Forest Model")
+    st.title("Protein Similarity Using CNN Model")
 
     # Sidebar for uploading protein sequences
     st.sidebar.title("Upload Protein Sequences")
@@ -52,36 +53,27 @@ def main():
         elif protein_b_input:
             protein_b_sequence = protein_b_input.splitlines()[-1]  # Get the last line as the sequence
 
-        # Perform similarity calculation using random forest model
-        similarity_score = calculate_similarity_random_forest(protein_a_sequence, protein_b_sequence)
+        # Perform similarity calculation using CNN model
+        similarity_score = calculate_similarity_cnn(protein_a_sequence, protein_b_sequence)
 
         # Display results
         st.success(f"Similarity Score: {similarity_score:.2f}")
 
-# Actual similarity calculation function using Random Forest model
-def calculate_similarity_random_forest(protein_a_sequence, protein_b_sequence):
-    # Load the Random Forest model
-    model = joblib.load('models/random_forest_model.joblib')
+# Actual similarity calculation function using CNN model
+def calculate_similarity_cnn(protein_a_sequence, protein_b_sequence):
+    # Load the CNN model
+    model = load_model('/models/cnn_model.h5')
 
-    # Prepare data for model input
-    sequences = [protein_a_sequence, protein_b_sequence]
-
-    # Vectorize the sequences (adjust max_features or other parameters as needed)
-    vectorizer = CountVectorizer(analyzer='char', ngram_range=(1, 3), max_features=26)  # Ensure this matches the training setup
-    X = vectorizer.fit_transform(sequences)
-
-    # Ensure we only use the first sequence's features for prediction
-    if X.shape[1] != 26:
-        raise ValueError(f"Expected 26 features, but got {X.shape[1]} features.")
+    # Tokenize and pad sequences
+    tokenizer = Tokenizer(char_level=True)
+    tokenizer.fit_on_texts([protein_a_sequence, protein_b_sequence])
+    tokenized_sequences = tokenizer.texts_to_sequences([protein_a_sequence, protein_b_sequence])
+    padded_sequences = pad_sequences(tokenized_sequences, maxlen=26, padding='post')
 
     # Predict similarity using the model
-    similarity_score = model.predict(X)[0]  # Get similarity score
+    similarity_scores = model.predict(padded_sequences.reshape(-1, 26, 1))
+    similarity_score = similarity_scores[0][0]  # Get similarity score for protein A
+    return similarity_score
 
-    # Scale the score from 0-10 to 0-100
-    scaled_similarity_score = similarity_score * 10  # Scale to 0-100
-
-    return scaled_similarity_score
-
-# Run the app
 if __name__ == "__main__":
     main()

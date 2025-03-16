@@ -1,10 +1,13 @@
 import streamlit as st
 import numpy as np
 import joblib
-from difflib import SequenceMatcher
 import re
+import pandas as pd
+from Bio.SeqUtils.ProtParam import ProteinAnalysis
+from Bio.SeqUtils import molecular_weight
+from Bio import SeqIO
+from io import StringIO
 
-# Function to read FASTA format
 def read_fasta(lines):
     fasta_dict = {}
     current_key = None
@@ -24,70 +27,102 @@ def read_fasta(lines):
         fasta_dict[current_key] = "".join(current_sequence)
     return fasta_dict
 
-def get_similarity_class(score):
-    """Convert numerical score to similarity class description"""
-    if score <= 1:
-        return "No similarity (Class 1)"
-    elif score <= 2:
-        return "Very low similarity (Class 2)"
-    elif score <= 3:
-        return "Low similarity (Class 3)"
-    elif score <= 4:
-        return "Low-moderate similarity (Class 4)"
-    elif score <= 5:
-        return "Moderate similarity (Class 5)"
-    elif score <= 6:
-        return "Moderate-high similarity (Class 6)"
-    elif score <= 7:
-        return "High similarity (Class 7)"
-    elif score <= 8:
-        return "Very high similarity (Class 8)"
-    elif score <= 9:
-        return "Extremely high similarity (Class 9)"
-    else:
-        return "Near identical (Class 10)"
+def extract_protein_features(seq1, seq2):
+    """Extract the specific features used in training the RF model"""
+    features = {}
+    
+    # Clean sequences to ensure valid amino acids
+    valid_aa = "ACDEFGHIKLMNPQRSTVWY"
+    seq1 = ''.join(aa for aa in seq1.upper() if aa in valid_aa)
+    seq2 = ''.join(aa for aa in seq2.upper() if aa in valid_aa)
+    
+    # Initialize Bio.SeqUtils.ProtParam objects for analysis
+    try:
+        prot1 = ProteinAnalysis(seq1)
+        prot2 = ProteinAnalysis(seq2)
+        
+        # P1 features
+        features['P1'] = len(seq1)
+        features['P1_AlipIndex'] = prot1.aliphatic_index()
+        features['P1_Autocorr'] = np.mean(prot1.protein_scale(window=7, param_dict='Flex'))
+        features['P1_Autocov'] = np.var(prot1.protein_scale(window=7, param_dict='Flex'))
+        features['P1_boman'] = sum(prot1.protein_scale(window=7, param_dict='hw'))
+        features['P1_charge'] = prot1.charge_at_pH(7.0)
+        features['P1_crosscov'] = 0  # Placeholder, compute if needed
+        features['P1_hydrmom'] = prot1.gravy()
+        features['P1_isoelctricp'] = prot1.isoelectric_point()
+        features['P1_instablility'] = prot1.instability_index()
+        features['P1_massshift'] = sum(prot1.protein_scale(window=7, param_dict='Flex'))
+        features['P1_molweight'] = prot1.molecular_weight()
+        features['P1_mz'] = prot1.molecular_weight() / abs(prot1.charge_at_pH(7.0)) if prot1.charge_at_pH(7.0) != 0 else 0
+        features['P1_sc'] = len([aa for aa in seq1 if aa in 'DEHKR']) / max(1, len(seq1))
+        
+        # P2 features
+        features['P2'] = len(seq2)
+        features['P2_AlipIndex'] = prot2.aliphatic_index()
+        features['P2_Autocorr'] = np.mean(prot2.protein_scale(window=7, param_dict='Flex'))
+        features['P2_Autocov'] = np.var(prot2.protein_scale(window=7, param_dict='Flex'))
+        features['P2_boman'] = sum(prot2.protein_scale(window=7, param_dict='hw'))
+        features['P2_charge'] = prot2.charge_at_pH(7.0)
+        features['P2_crosscov'] = 0  # Placeholder, compute if needed
+        features['P2_hydrmom'] = prot2.gravy()
+        features['P2_isoelctricp'] = prot2.isoelectric_point()
+        features['P2_instablility'] = prot2.instability_index()
+        features['P2_massshift'] = sum(prot2.protein_scale(window=7, param_dict='Flex'))
+        features['P2_molweight'] = prot2.molecular_weight()
+        features['P2_mz'] = prot2.molecular_weight() / abs(prot2.charge_at_pH(7.0)) if prot2.charge_at_pH(7.0) != 0 else 0
+        features['P2_sc'] = len([aa for aa in seq2 if aa in 'DEHKR']) / max(1, len(seq2))
+        
+    except Exception as e:
+        st.error(f"Error calculating protein features: {str(e)}")
+        return None
+    
+    return features
 
-def calculate_sequence_similarity(seq1, seq2):
-    """Calculate sequence similarity score using multiple methods and return a score from 0-10"""
-    # Method 1: Use SequenceMatcher ratio (accounts for sequence order and content)
-    ratio_score = SequenceMatcher(None, seq1, seq2).ratio() * 10
-    
-    # Method 2: Calculate amino acid composition similarity
-    # Count amino acids in both sequences
-    amino_acids = 'ACDEFGHIKLMNPQRSTVWY'
-    
-    # Get counts for each sequence
-    counts_1 = {aa: seq1.upper().count(aa) / max(1, len(seq1)) for aa in amino_acids}
-    counts_2 = {aa: seq2.upper().count(aa) / max(1, len(seq2)) for aa in amino_acids}
-    
-    # Calculate composition similarity
-    composition_similarity = 0
-    for aa in amino_acids:
-        composition_similarity += (1 - abs(counts_1[aa] - counts_2[aa])) / len(amino_acids)
-    
-    composition_score = composition_similarity * 10
-    
-    # Method 3: Calculate k-mer similarity (shared subsequences)
-    k = 3  # length of k-mers
-    kmers_1 = set(seq1[i:i+k] for i in range(len(seq1)-k+1))
-    kmers_2 = set(seq2[i:i+k] for i in range(len(seq2)-k+1))
-    
-    if not kmers_1 or not kmers_2:
-        kmer_score = 0
+def get_rf_class(prediction_value):
+    """Convert the RF model prediction to the correct class"""
+    if 1 <= prediction_value <= 10:
+        return 0
+    elif 11 <= prediction_value <= 20:
+        return 1
+    elif 21 <= prediction_value <= 30:
+        return 2
+    elif 31 <= prediction_value <= 40:
+        return 3
+    elif 41 <= prediction_value <= 50:
+        return 4
+    elif 51 <= prediction_value <= 60:
+        return 5
+    elif 61 <= prediction_value <= 70:
+        return 6
+    elif 71 <= prediction_value <= 80:
+        return 7
+    elif 81 <= prediction_value <= 90:
+        return 8
+    elif 91 <= prediction_value <= 100:
+        return 9
     else:
-        shared = len(kmers_1.intersection(kmers_2))
-        total = len(kmers_1.union(kmers_2))
-        kmer_score = (shared / total) * 10
-    
-    # Combine scores with appropriate weights
-    # Give more weight to ratio_score as it considers sequence order
-    final_score = 0.4 * ratio_score + 0.3 * composition_score + 0.3 * kmer_score
-    
-    return min(10.0, max(0.0, final_score))  # Clamp between 0 and 10
+        return None
+
+def get_class_description(class_value):
+    """Return human-readable description for each class"""
+    descriptions = {
+        0: "Very Low Similarity (1-10%)",
+        1: "Low Similarity (11-20%)",
+        2: "Low-Moderate Similarity (21-30%)",
+        3: "Moderate Similarity (31-40%)",
+        4: "Moderate Similarity (41-50%)",
+        5: "Moderate-High Similarity (51-60%)",
+        6: "High Similarity (61-70%)",
+        7: "High Similarity (71-80%)",
+        8: "Very High Similarity (81-90%)",
+        9: "Extremely High Similarity (91-100%)"
+    }
+    return descriptions.get(class_value, "Unknown Classification")
 
 def main():
-    st.title("Protein Similarity Using ML")
-    st.write("Upload or enter two protein sequences to calculate their similarity score and class.")
+    st.title("Protein Similarity Using Random Forest Model")
+    st.write("Upload or enter two protein sequences to predict their similarity class.")
     
     # Sidebar for uploading protein sequences
     st.sidebar.title("Upload Protein Sequences")
@@ -99,14 +134,8 @@ def main():
     protein_a_input = st.sidebar.text_area("Enter Protein A sequence (FASTA format)")
     protein_b_input = st.sidebar.text_area("Enter Protein B sequence (FASTA format)")
     
-    # Analysis method selection
-    analysis_method = st.sidebar.radio(
-        "Choose Analysis Method",
-        ["Sequence-based Similarity", "Try Random Forest Model"]
-    )
-    
     # Submit button
-    if st.sidebar.button("Calculate Similarity"):
+    if st.sidebar.button("Predict Similarity"):
         # Process and validate inputs
         protein_a_sequence = None
         protein_b_sequence = None
@@ -155,132 +184,101 @@ def main():
         if protein_b_sequence:
             protein_b_sequence = re.sub(r'[^A-Za-z]', '', protein_b_sequence)
         
-        # Validate sequences and calculate similarity
+        # Validate sequences and predict similarity using RF model
         if protein_a_sequence and protein_b_sequence:
             try:
-                # Check if sequences are identical
-                if protein_a_sequence == protein_b_sequence:
-                    similarity_score = 10.0  # Maximum score
-                    similarity_class = "Identical sequences (Class 10)"
-                    similarity_percentage = 100.0
+                # Extract features for RF model
+                features = extract_protein_features(protein_a_sequence, protein_b_sequence)
+                
+                if features:
+                    # Load the trained model
+                    try:
+                        model = joblib.load('models/random_forest_model.joblib')
+                        
+                        # Create DataFrame with the features in the correct order
+                        feature_cols = ['P1', 'P1_AlipIndex', 'P1_Autocorr', 'P1_Autocov', 'P1_boman',
+                                        'P1_charge', 'P1_crosscov', 'P1_hydrmom', 'P1_isoelctricp',
+                                        'P1_instablility', 'P1_massshift', 'P1_molweight', 'P1_mz', 'P1_sc',
+                                        'P2', 'P2_AlipIndex', 'P2_Autocorr', 'P2_Autocov', 'P2_boman',
+                                        'P2_charge', 'P2_crosscov', 'P2_hydrmom', 'P2_isoelctricp',
+                                        'P2_instablility', 'P2_massshift', 'P2_molweight', 'P2_mz', 'P2_sc']
+                        
+                        # Create DataFrame with just the features needed (excluding similaritry score)
+                        df = pd.DataFrame([features])
+                        
+                        # Make sure the DataFrame has all needed columns in the right order
+                        for col in feature_cols:
+                            if col not in df.columns:
+                                df[col] = 0  # Default value for missing columns
+                        
+                        # Select only the columns used during training and in the right order
+                        df = df[feature_cols]
+                        
+                        # Make prediction
+                        prediction_value = model.predict(df)[0]
+                        
+                        # Get class based on prediction value
+                        class_value = get_rf_class(prediction_value)
+                        class_description = get_class_description(class_value)
+                        
+                        # Display results
+                        st.success(f"Prediction Value: {prediction_value:.2f}")
+                        st.info(f"Similarity Class: {class_value} - {class_description}")
+                        
+                        # Create a visual indicator of similarity (progress bar)
+                        similarity_percentage = prediction_value
+                        st.progress(similarity_percentage/100)
+                        
+                        # Show protein information
+                        st.subheader("Protein Sequences")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write("**Protein A:**")
+                            st.text_area("Sequence A", protein_a_sequence[:100] + "..." if len(protein_a_sequence) > 100 else protein_a_sequence, height=100, disabled=True)
+                            st.write(f"Length: {len(protein_a_sequence)} amino acids")
+                        with col2:
+                            st.write("**Protein B:**")
+                            st.text_area("Sequence B", protein_b_sequence[:100] + "..." if len(protein_b_sequence) > 100 else protein_b_sequence, height=100, disabled=True)
+                            st.write(f"Length: {len(protein_b_sequence)} amino acids")
+                    
+                    except Exception as e:
+                        st.error(f"Model prediction error: {str(e)}")
+                        import traceback
+                        st.error(f"Detailed error: {traceback.format_exc()}")
                 else:
-                    if analysis_method == "Sequence-based Similarity":
-                        # Use the sequence-based similarity calculation
-                        similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
-                    else:
-                        # Try to use the random forest model
-                        try:
-                            model = joblib.load('models/random_forest_model.joblib')
-                            # Use the model
-                            # This is a placeholder - as you reported, the model always returns 0
-                            # Use sequence similarity as fallback if model returns 0
-                            model_score = 0  # Assuming model always returns 0 based on previous attempts
-                            
-                            if model_score <= 0:
-                                st.warning("Model prediction was 0. Using sequence-based similarity as fallback.")
-                                similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
-                            else:
-                                similarity_score = model_score
-                                
-                        except Exception as e:
-                            st.warning(f"Model could not be loaded or error in prediction. Using sequence-based similarity instead.")
-                            similarity_score = calculate_sequence_similarity(protein_a_sequence, protein_b_sequence)
-                    
-                    similarity_class = get_similarity_class(similarity_score)
-                    # Convert score (1-10) to percentage (0-100%)
-                    similarity_percentage = (similarity_score / 10) * 100
-                
-                # Display results
-                st.success(f"Similarity Score: {similarity_score:.2f}/10")
-                st.info(f"Similarity Class: {similarity_class}")
-                st.info(f"Similarity Percentage: {similarity_percentage:.1f}%")
-                
-                # Create a visual indicator of similarity (progress bar)
-                st.progress(similarity_percentage/100)
-                
-                # Show protein information
-                st.subheader("Protein Sequences")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**Protein A:**")
-                    st.text_area("Sequence A", protein_a_sequence[:100] + "..." if len(protein_a_sequence) > 100 else protein_a_sequence, height=100, disabled=True)
-                    st.write(f"Length: {len(protein_a_sequence)} amino acids")
-                with col2:
-                    st.write("**Protein B:**")
-                    st.text_area("Sequence B", protein_b_sequence[:100] + "..." if len(protein_b_sequence) > 100 else protein_b_sequence, height=100, disabled=True)
-                    st.write(f"Length: {len(protein_b_sequence)} amino acids")
-                
-                # Show additional analytics
-                st.subheader("Sequence Analysis")
-                
-                # Calculate basic statistics
-                common_aas = set(protein_a_sequence.upper()) & set(protein_b_sequence.upper())
-                
-                # Display stats
-                st.write(f"Common amino acids: {', '.join(sorted(common_aas))}")
-                
-                # Find longest common subsequence
-                def longest_common_subsequence(s1, s2):
-                    m, n = len(s1), len(s2)
-                    dp = [[0] * (n + 1) for _ in range(m + 1)]
-                    
-                    # Fill dp table
-                    for i in range(1, m + 1):
-                        for j in range(1, n + 1):
-                            if s1[i-1] == s2[j-1]:
-                                dp[i][j] = dp[i-1][j-1] + 1
-                            else:
-                                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-                    
-                    # Reconstruct LCS
-                    i, j = m, n
-                    lcs = []
-                    
-                    while i > 0 and j > 0:
-                        if s1[i-1] == s2[j-1]:
-                            lcs.append(s1[i-1])
-                            i -= 1
-                            j -= 1
-                        elif dp[i-1][j] > dp[i][j-1]:
-                            i -= 1
-                        else:
-                            j -= 1
-                    
-                    return ''.join(reversed(lcs))
-                
-                # Only compute LCS for reasonably sized sequences
-                if len(protein_a_sequence) < 1000 and len(protein_b_sequence) < 1000:
-                    lcs = longest_common_subsequence(protein_a_sequence, protein_b_sequence)
-                    if len(lcs) > 10:
-                        st.write(f"Longest common subsequence (first 20 characters): {lcs[:20]}...")
-                        st.write(f"LCS length: {len(lcs)} amino acids")
-                    else:
-                        st.write(f"Longest common subsequence: {lcs}")
-                
+                    st.error("Could not extract protein features for prediction.")
+            
             except Exception as e:
-                st.error(f"Error calculating similarity: {str(e)}")
+                st.error(f"Error during analysis: {str(e)}")
                 import traceback
                 st.error(f"Detailed error: {traceback.format_exc()}")
         else:
-            st.warning("Please provide both protein sequences to calculate similarity.")
+            st.warning("Please provide both protein sequences to predict similarity.")
     
     # Add some informational content to the main page when no calculation is performed
-    if "similarity_score" not in locals():
-        st.info("⬅️ Please upload or enter protein sequences in the sidebar and click 'Calculate Similarity'")
+    if "prediction_value" not in locals():
+        st.info("⬅️ Please upload or enter protein sequences in the sidebar and click 'Predict Similarity'")
         st.markdown("""
         ### How it works:
         1. Upload FASTA files or enter protein sequences in FASTA format
-        2. Click 'Calculate Similarity' to analyze
-        3. View the similarity score (1-10), similarity class, and percentage
+        2. Click 'Predict Similarity' to analyze using the Random Forest model
+        3. View the similarity class (0-9) and description
         
-        **Sequence-based Similarity Method**:
-        - Uses a combination of sequence alignment, amino acid composition, and k-mer similarity
-        - Works without requiring a pre-trained model
-        - Provides reliable similarity scores for any protein sequences
-        
-        **Random Forest Model Method**:
-        - Attempts to use your trained random forest model
-        - Falls back to sequence-based similarity if model returns 0 or fails
+        **Features used by the model include:**
+        - Protein length
+        - Aliphatic index
+        - Autocorrelation
+        - Autocovariance
+        - Boman index
+        - Charge
+        - Cross-covariance
+        - Hydrophobic moment
+        - Isoelectric point
+        - Instability index
+        - Mass shift
+        - Molecular weight
+        - Mass-to-charge ratio
+        - Side chain properties
         """)
 
 if __name__ == "__main__":

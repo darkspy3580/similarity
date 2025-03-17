@@ -130,7 +130,7 @@ def calculate_similarity_class(protein_a_sequence, protein_b_sequence):
 
     try:
         # Load the Random Forest model
-        model = joblib.load('models/random_forest_model.joblib')
+        model = joblib.load('models/random_forest_model (2).joblib')
 
         # Prepare data for model input
         sequences = [protein_a_sequence, protein_b_sequence]

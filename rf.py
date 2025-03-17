@@ -1,7 +1,6 @@
 import streamlit as st
 import joblib
 from sklearn.feature_extraction.text import CountVectorizer
-import pandas as pd
 
 # Set page configuration
 st.set_page_config(
@@ -11,46 +10,72 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Apply custom CSS - simplified with better color contrast
+# Apply custom CSS - forcing white background and removing extra elements
 st.markdown("""
 <style>
+    /* Force white background throughout the app */
+    .stApp {
+        background-color: white;
+    }
+    
+    /* Remove default dark mode detection */
+    @media (prefers-color-scheme: dark) {
+        .stApp {
+            background-color: white;
+            color: black;
+        }
+    }
+    
+    /* Header styling */
     .main-header {
         font-size: 2.2rem;
         color: #1A5276;
         text-align: center;
         margin-bottom: 1rem;
     }
+    
+    /* Sub-header styling */
     .sub-header {
         font-size: 1.4rem;
         color: #2E86C1;
         margin-top: 1.5rem;
     }
+    
+    /* Results container */
     .results-container {
-        background-color: #F8F9F9;
+        background-color: white;
         padding: 20px;
         border-radius: 8px;
         border: 1px solid #AED6F1;
         margin-top: 20px;
     }
-    .info-box {
-        background-color: #F8F9F9;
-        padding: 15px;
-        border-radius: 5px;
-        border: 1px solid #D5D8DC;
-        margin-bottom: 15px;
-    }
+    
+    /* Button styling */
     .stButton>button {
         background-color: #2874A6;
         color: white;
     }
+    
+    /* Result class display */
     .result-class {
         font-size: 2.5rem;
         font-weight: bold;
         text-align: center;
         padding: 20px;
-        background-color: #F8F9F9;
+        background-color: white;
         border-radius: 8px;
         margin: 20px 0;
+        border: 1px solid #D5D8DC;
+    }
+    
+    /* Override any potential dark mode elements */
+    .st-bq, .st-bb, .st-bc, .st-bd, .st-be, .st-bf, .st-bg, .st-bh {
+        color: black;
+    }
+    
+    .st-g0, .st-g1, .st-g2, .st-g3, .st-g4, .st-g5, .st-g6, .st-g7, .st-g8, .st-g9 {
+        background-color: white;
+        color: black;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -224,8 +249,7 @@ def main():
                     # Calculate similarity
                     similarity_result = calculate_similarity_class(protein_a_sequence, protein_b_sequence)
                     
-                    # Display results
-                    st.markdown('<div class="results-container">', unsafe_allow_html=True)
+                    # Display results - NO BAR, just the header text
                     st.markdown('<h2 class="sub-header">Analysis Results</h2>', unsafe_allow_html=True)
                     
                     # Display only the class (and score only if perfect match)
@@ -248,8 +272,6 @@ def main():
                         st.markdown(f"**{protein_b_name}**")
                         st.text_area("Protein B", protein_b_sequence, height=100, disabled=True)
                         st.text(f"Length: {len(protein_b_sequence)} amino acids")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
                     
                     # Simple information about classes
                     with st.expander("About Similarity Classes"):

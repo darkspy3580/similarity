@@ -14,46 +14,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Apply custom CSS
+# Apply custom CSS - simplified with better color contrast
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2.5rem !important;
-        color: #1E88E5;
+        font-size: 2.2rem;
+        color: #1A5276;
         text-align: center;
         margin-bottom: 1rem;
     }
     .sub-header {
-        font-size: 1.5rem;
-        color: #0D47A1;
-        margin-top: 2rem;
+        font-size: 1.4rem;
+        color: #2E86C1;
+        margin-top: 1.5rem;
     }
     .results-container {
-        background-color: #E3F2FD;
+        background-color: #F8F9F9;
         padding: 20px;
-        border-radius: 10px;
+        border-radius: 8px;
+        border: 1px solid #AED6F1;
         margin-top: 20px;
     }
-    .sidebar-content {
-        padding: 20px 10px;
-    }
-    .stButton>button {
-        background-color: #1976D2;
-        color: white;
-        border-radius: 5px;
-        padding: 10px 20px;
-        font-weight: bold;
-    }
-    .similarity-class {
-        font-size: 3rem;
-        font-weight: bold;
-        text-align: center;
-    }
     .info-box {
-        background-color: #E8F5E9;
+        background-color: #F8F9F9;
         padding: 15px;
         border-radius: 5px;
+        border: 1px solid #D5D8DC;
         margin-bottom: 15px;
+    }
+    .stButton>button {
+        background-color: #2874A6;
+        color: white;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -132,53 +123,40 @@ def calculate_similarity_class(protein_a_sequence, protein_b_sequence):
         st.error(f"Error calculating similarity: {str(e)}")
         return {"class": -1, "description": "Error", "score": 0}
 
-# Function to generate visualization of the similarity score
+# Function to generate a simple visualization of the similarity score
 def generate_similarity_gauge(similarity_score):
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(8, 2))
     
-    # Create gauge chart
-    gauge_range = np.linspace(0, 100, 100)
-    gauge_height = np.ones(100)
-    
-    # Create color gradient
-    colors = sns.color_palette("RdYlGn", 100)
-    
-    # Plot the gauge
-    plt.barh(0, gauge_range, height=0.6, color=colors)
-    
-    # Add marker for the current score
-    plt.scatter(similarity_score, 0, s=300, color='darkblue', zorder=5, marker='v')
+    # Create a simple progress bar
+    plt.barh(0, 100, height=0.5, color='#D6EAF8', alpha=0.6)
+    plt.barh(0, similarity_score, height=0.5, color='#2874A6')
     
     # Customize the plot
     plt.xlim(0, 100)
     plt.ylim(-0.5, 0.5)
-    plt.axis('off')
+    plt.tick_params(axis='both', which='both', length=0, labelbottom=True, bottom=False)
+    plt.xticks([0, 25, 50, 75, 100])
+    plt.yticks([])
     
     # Add score text
-    plt.text(similarity_score, -0.1, f"{similarity_score:.1f}%", 
-            ha='center', va='center', fontsize=14, fontweight='bold')
+    plt.text(similarity_score, 0, f" {similarity_score:.1f}%", 
+            ha='left', va='center', fontsize=12, fontweight='bold')
+    
+    # Add title
+    plt.title("Similarity Score", fontsize=12)
     
     # Add labels
-    plt.text(5, 0.2, "Low", ha='center', fontsize=10)
-    plt.text(50, 0.2, "Medium", ha='center', fontsize=10)
-    plt.text(95, 0.2, "High", ha='center', fontsize=10)
+    plt.xlabel("Percentage", fontsize=10)
+    
+    # Adjust layout
+    plt.tight_layout()
     
     return fig
 
-# Function to format sequence for display
-def format_sequence_display(sequence, max_length=50):
-    if len(sequence) <= max_length:
-        return sequence
-    return sequence[:max_length] + "..."
-
-# Helper function to create info boxes
+# Helper function to create simple info boxes
 def show_info_box(title, content):
-    st.markdown(f"""
-    <div class="info-box">
-        <h4>{title}</h4>
-        <p>{content}</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"### {title}")
+    st.markdown(content)
 
 # Main function
 def main():
@@ -195,7 +173,6 @@ def main():
     col1, col2 = st.columns([1, 3])
     
     with col1:
-        st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
         st.markdown("### Input Methods")
         
         # Create tabs for different input methods
@@ -208,12 +185,11 @@ def main():
         
         with input_tab2:
             st.markdown("#### Enter Sequences")
-            protein_a_input = st.text_area("Protein A Sequence (FASTA format)", height=150)
-            protein_b_input = st.text_area("Protein B Sequence (FASTA format)", height=150)
+            protein_a_input = st.text_area("Protein A Sequence (FASTA format)", height=120)
+            protein_b_input = st.text_area("Protein B Sequence (FASTA format)", height=120)
         
         # Submit button with spinner
-        analyze_button = st.button("Analyze Similarity", use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+        analyze_button = st.button("Analyze Similarity")
     
     with col2:
         # Main content area for results
@@ -281,16 +257,15 @@ def main():
                     st.markdown('<h2 class="sub-header">Analysis Results</h2>', unsafe_allow_html=True)
                     
                     # Create three columns for results display
-                    res_col1, res_col2, res_col3 = st.columns([1, 1, 1])
+                    res_col1, res_col2 = st.columns(2)
                     
                     with res_col1:
                         st.metric("Similarity Score", f"{similarity_result['score']:.1f}%")
-                        
-                    with res_col2:
                         st.metric("Similarity Class", similarity_result['class'])
                         
-                    with res_col3:
+                    with res_col2:
                         st.metric("Classification", similarity_result['description'])
+                        st.metric("Sequence Length", f"A: {len(protein_a_sequence)}, B: {len(protein_b_sequence)}")
                     
                     # Display similarity gauge
                     st.markdown("### Similarity Visualization")
@@ -304,48 +279,40 @@ def main():
                     with seq_col1:
                         st.markdown(f"**{protein_a_name}**")
                         st.text_area("Protein A", protein_a_sequence, height=100, disabled=True)
-                        st.text(f"Length: {len(protein_a_sequence)} amino acids")
                         
                     with seq_col2:
                         st.markdown(f"**{protein_b_name}**")
                         st.text_area("Protein B", protein_b_sequence, height=100, disabled=True)
-                        st.text(f"Length: {len(protein_b_sequence)} amino acids")
                     
                     st.markdown("</div>", unsafe_allow_html=True)
                     
-                    # Additional information
+                    # Simple information about classes
                     with st.expander("About Similarity Classes"):
-                        similarity_classes = {
-                            0: "Very Low Similarity (1-10%): Proteins are likely unrelated.",
-                            1: "Low Similarity (11-20%): Minimal structural or functional similarity.",
-                            2: "Low-Moderate Similarity (21-30%): Some similarities exist but likely different functions.",
-                            3: "Moderate Similarity (31-40%): May share some functional domains.",
-                            4: "Moderate-High Similarity (41-50%): Possibly related proteins with some conserved regions.",
-                            5: "High Similarity (51-60%): Likely related proteins with similar functions.",
-                            6: "High-Very High Similarity (61-70%): Strongly related proteins, probably homologous.",
-                            7: "Very High Similarity (71-80%): Closely related proteins with conserved functions.",
-                            8: "Extremely High Similarity (81-90%): Very closely related, likely isoforms or variants.",
-                            9: "Near-Perfect Match (91-100%): Almost identical proteins."
-                        }
-                        
-                        for class_num, desc in similarity_classes.items():
-                            st.markdown(f"**Class {class_num}**: {desc}")
+                        st.markdown("""
+                        - **Class 0-2**: Low similarity (1-30%)
+                        - **Class 3-4**: Moderate similarity (31-50%)
+                        - **Class 5-6**: High similarity (51-70%)
+                        - **Class 7-9**: Very high similarity (71-100%)
+                        """)
         else:
             # Show instructions when no analysis has been performed
-            show_info_box("How to Use", """
+            st.markdown("## How to Use")
+            st.markdown("""
             1. Upload FASTA files or paste protein sequences in the input fields
             2. Click 'Analyze Similarity' to calculate the similarity score
             3. View detailed results and visualizations
             """)
             
-            show_info_box("About This Tool", """
+            st.markdown("## About This Tool")
+            st.markdown("""
             This tool uses a Random Forest machine learning model to predict the similarity 
             between two protein sequences. The model analyzes n-gram patterns in amino acid 
             sequences to determine structural and functional similarity.
             """)
             
-            # Placeholder for results area
-            st.image("https://via.placeholder.com/800x400?text=Upload+Protein+Sequences+to+See+Results", use_column_width=True)
+            # Simple placeholder - fixed deprecated parameter
+            st.markdown("### Results will appear here after analysis")
+            st.image("https://via.placeholder.com/800x200?text=Upload+Protein+Sequences+to+See+Results", use_container_width=True)
 
 # Run the application
 if __name__ == "__main__":
